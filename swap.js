@@ -2,12 +2,8 @@ const { ethers } = require('ethers');
 const chalk = require('chalk');
 require('dotenv').config();
 
+// Load & validate environment variables
 const PRIVATE_KEY    = (process.env.PRIVATE_KEY || '').trim();
-if (!PRIVATE_KEY.startsWith('0x') || PRIVATE_KEY.length !== 66) {
-  console.error(chalk.red('❌ PRIVATE_KEY invalid or missing.'));
-  process.exit(1);
-}
-
 const RPC_URL        = process.env.RPC_URL;
 const ROUTER_ADDRESS = process.env.ROUTER_ADDRESS;
 const WNATIVE        = process.env.WNATIVE;
@@ -16,16 +12,39 @@ const SLIPPAGE       = parseFloat(process.env.SLIPPAGE) / 100;    // e.g. 1 → 
 const DEADLINE_SEC   = parseInt(process.env.DEADLINE_MINUTES, 10) * 60;
 const GAS_LIMIT      = parseInt(process.env.GAS_LIMIT, 10);
 const DELAY_MS       = parseInt(process.env.DELAY_MS, 10) || 5000;  // delay between swaps
+const TOKENS_ENV     = process.env.TOKENS || '';                  // comma-separated list
 
-if (!RPC_URL || !ROUTER_ADDRESS || !WNATIVE || !AMOUNT_IN_RAW) {
-  console.error(chalk.red('❌ Missing required environment variables.'));
+// Basic env checks
+if (!PRIVATE_KEY.startsWith('0x') || PRIVATE_KEY.length !== 66) {
+  console.error(chalk.red('❌ PRIVATE_KEY invalid or missing.'));
+  process.exit(1);
+}
+if (!RPC_URL || !ROUTER_ADDRESS || !WNATIVE || !AMOUNT_IN_RAW || !TOKENS_ENV) {
+  console.error(chalk.red('❌ Missing required env vars (RPC_URL, ROUTER_ADDRESS, WNATIVE, AMOUNT_IN, TOKENS)'));
   process.exit(1);
 }
 
+// Parse token list
+const TOKEN_LIST = TOKENS_ENV.split(',').map(t => t.trim()).filter(t => t);
+if (TOKEN_LIST.length === 0) {
+  console.error(chalk.red('❌ TOKENS env var must contain at least one token address.'));
+  process.exit(1);
+}
+
+// Build swap pairs: WNATIVE -> each token, plus each token_i -> token_j (i<j)
+const SWAP_PAIRS = [];
+for (const token of TOKEN_LIST) {
+  SWAP_PAIRS.push({ from: WNATIVE, to: token });
+}
+for (let i = 0; i < TOKEN_LIST.length; i++) {
+  for (let j = i + 1; j < TOKEN_LIST.length; j++) {
+    SWAP_PAIRS.push({ from: TOKEN_LIST[i], to: TOKEN_LIST[j] });
+  }
+}
+
+// Ethers setup
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
 const wallet   = new ethers.Wallet(PRIVATE_KEY, provider);
-
-// ABIs
 const routerAbi = [
   "function swapExactETHForTokens(uint256,address[],address,uint256) payable returns(uint256[])",
   "function swapExactTokensForTokens(uint256,uint256,address[],address,uint256) returns(uint256[])",
@@ -38,22 +57,13 @@ const erc20Abi = [
   "function approve(address,uint256) returns(bool)",
   "function balanceOf(address) view returns(uint256)"
 ];
-
 const router = new ethers.Contract(ROUTER_ADDRESS, routerAbi, wallet);
 
-// Define swap pairs (add as many as needed)
-const SWAP_PAIRS = [
-  { from: WNATIVE, to: process.env.TOKEN_A },
-  { from: WNATIVE, to: process.env.TOKEN_B },
-  { from: process.env.TOKEN_A, to: process.env.TOKEN_B }
-];
-
-// Utility: sleep
 const sleep = ms => new Promise(res => setTimeout(res, ms));
 
-async function loadTokenInfo(addrs) {
+async function loadTokenInfo(addresses) {
   const info = {};
-  for (const addr of addrs) {
+  for (const addr of addresses) {
     if (addr === WNATIVE) {
       info[addr] = { symbol: process.env.NATIVE_SYMBOL || 'NATIVE', decimals: 18 };
     } else {
@@ -72,7 +82,6 @@ async function loadTokenInfo(addrs) {
 async function swapToken(from, to, amountRaw, tokenInfo) {
   const { symbol: symIn, decimals: decIn }   = tokenInfo[from];
   const { symbol: symOut, decimals: decOut } = tokenInfo[to];
-
   const amountIn = ethers.utils.parseUnits(amountRaw, decIn);
   const path     = from === WNATIVE ? [WNATIVE, to] : [from, WNATIVE, to];
 
@@ -96,7 +105,6 @@ async function swapToken(from, to, amountRaw, tokenInfo) {
   }
 
   const before = await new ethers.Contract(to, erc20Abi, provider).balanceOf(wallet.address);
-
   const opts = { gasLimit: GAS_LIMIT };
   if (from === WNATIVE) opts.value = amountIn;
 
@@ -123,13 +131,14 @@ async function swapToken(from, to, amountRaw, tokenInfo) {
 (async () => {
   console.log(chalk.blue('🤖 Starting swaps…'));
 
-  // gather unique addresses
-  const addrs = Array.from(new Set([
-    ...SWAP_PAIRS.map(p => p.from),
-    ...SWAP_PAIRS.map(p => p.to)
+  // Collect all unique addresses for info-loading
+  const allAddrs = Array.from(new Set([
+    WNATIVE,
+    ...TOKEN_LIST
   ]));
-  const tokenInfo = await loadTokenInfo(addrs);
+  const tokenInfo = await loadTokenInfo(allAddrs);
 
+  // Run swaps in sequence
   for (const { from, to } of SWAP_PAIRS) {
     try {
       await swapToken(from, to, AMOUNT_IN_RAW, tokenInfo);
