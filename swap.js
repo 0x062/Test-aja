@@ -8,7 +8,7 @@ const RPC_URL        = process.env.RPC_URL;
 const ROUTER_ADDRESS = process.env.ROUTER_ADDRESS;
 const WNATIVE        = process.env.WNATIVE;
 const AMOUNT_IN_RAW  = process.env.AMOUNT_IN;             // e.g. "0.001"
-const SLIPPAGE       = parseFloat(process.env.SLIPPAGE) / 100;    // e.g. 1 → 0.01
+const SLIPPAGE       = parseFloat(process.env.SLIPPAGE) / 100;
 const DEADLINE_SEC   = parseInt(process.env.DEADLINE_MINUTES, 10) * 60;
 const GAS_LIMIT      = parseInt(process.env.GAS_LIMIT, 10);
 const DELAY_MS       = parseInt(process.env.DELAY_MS, 10) || 5000;
@@ -99,7 +99,7 @@ async function swap(from, to, amountRaw, tokenInfo) {
   const deadline = Math.floor(Date.now() / 1000) + DEADLINE_SEC;
 
   console.log(chalk.yellow(`\n🔄 Swap ${amountRaw} ${symIn} → ${symOut}`));
-  console.log(chalk.yellow(`   est out: ${ethers.utils.formatUnits(estimatedOut, symOut === 'NATIVE'? 18 : decOut)} ${symOut}`));
+  console.log(chalk.yellow(`   est out: ${ethers.utils.formatUnits(estimatedOut, to===WNATIVE?18:decOut)} ${symOut}`));
 
   // Approve if needed
   if (from !== WNATIVE) {
@@ -134,7 +134,7 @@ async function swap(from, to, amountRaw, tokenInfo) {
   const allAddrs = Array.from(new Set([WNATIVE, ...TOKEN_LIST]));
   const tokenInfo = await loadTokenInfo(allAddrs);
 
-  // 1. Execute defined token pairs swaps (native↔tokens & token↔token)
+  // 1. Execute defined token pairs swaps
   for (const { from, to } of SWAP_PAIRS) {
     try {
       await swap(from, to, AMOUNT_IN_RAW, tokenInfo);
@@ -145,21 +145,26 @@ async function swap(from, to, amountRaw, tokenInfo) {
     await sleep(DELAY_MS);
   }
 
-  // 2. Setelah semua, tampilkan balance tiap token
-  console.log(chalk.magenta('\n📊 Post-swap token balances:'));
+  // 2. Display balances: native, WNATIVE, then tokens
+  console.log(chalk.magenta('\n📊 Balances after swaps:'));
+  // Native ETH balance
+  const ethBal = await provider.getBalance(wallet.address);
+  console.log(`   - ETH: ${parseFloat(ethers.utils.formatEther(ethBal))}`);
+  // WNATIVE token balance
+  const wToken = new ethers.Contract(WNATIVE, erc20Abi, provider);
+  const wBalBN = await wToken.balanceOf(wallet.address);
+  console.log(`   - ${tokenInfo[WNATIVE].symbol}: ${parseFloat(ethers.utils.formatUnits(wBalBN, tokenInfo[WNATIVE].decimals))}`);
+  // Other tokens
   for (const tokenAddr of TOKEN_LIST) {
-    const contract = new ethers.Contract(tokenAddr, erc20Abi, provider);
-    const balBN = await contract.balanceOf(wallet.address);
-    const bal = parseFloat(ethers.utils.formatUnits(balBN, tokenInfo[tokenAddr].decimals));
-    console.log(`   - ${tokenInfo[tokenAddr].symbol}: ${bal}`);
+    const balBN = await new ethers.Contract(tokenAddr, erc20Abi, provider).balanceOf(wallet.address);
+    console.log(`   - ${tokenInfo[tokenAddr].symbol}: ${parseFloat(ethers.utils.formatUnits(balBN, tokenInfo[tokenAddr].decimals))}`);
   }
 
-  // 3. Swap semua token kembali ke native
+  // 3. Swap all remaining tokens back to native
   console.log(chalk.blue('\n🔄 Swapping all remaining tokens back to NATIVE…'));
   for (const tokenAddr of TOKEN_LIST) {
     try {
-      const contract = new ethers.Contract(tokenAddr, erc20Abi, provider);
-      const balBN = await contract.balanceOf(wallet.address);
+      const balBN = await new ethers.Contract(tokenAddr, erc20Abi, provider).balanceOf(wallet.address);
       if (balBN.isZero()) continue;
       const amountRaw = ethers.utils.formatUnits(balBN, tokenInfo[tokenAddr].decimals);
       await swap(tokenAddr, WNATIVE, amountRaw, tokenInfo);
