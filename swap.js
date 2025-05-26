@@ -78,7 +78,7 @@ async function swap(from, to, amountRaw, tokenInfo) {
   const feeCost  = gasPrice.mul(GAS_LIMIT);
   const totalCost = from === WNATIVE ? feeCost.add(amountIn) : feeCost;
   if (ethBal.lt(totalCost)) {
-    console.error(chalk.red(`❌ Skip ${symIn}->${symOut}: need ${(ethers.utils.formatEther(totalCost))} ETH for gas${from===WNATIVE?'+value':''}, have ${ethers.utils.formatEther(ethBal)}`));
+    console.error(chalk.red(`❌ Skip ${symIn}->${symOut}: need ${(ethers.utils.formatEther(totalCost))} XOS for gas${from===WNATIVE?'+value':''}, have ${ethers.utils.formatEther(ethBal)}`));
     return;
   }
 
