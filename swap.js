@@ -120,13 +120,13 @@ async function swap(from, to, amountRaw, tokenInfo) {
   // 2. balances
   console.log(chalk.magenta('\n📊 Balances after swaps:'));
   const ethB = await provider.getBalance(wallet.address);
-  console.log(`   - ETH: ${parseFloat(ethers.utils.formatEther(ethB))}`);
+  console.log(`   - XOS: ${parseFloat(ethers.utils.formatEther(ethB))}`);
   const wB = await new ethers.Contract(WNATIVE,erc20Abi,provider).balanceOf(wallet.address);
   console.log(`   - ${info[WNATIVE].symbol}: ${parseFloat(ethers.utils.formatUnits(wB,info[WNATIVE].decimals))}`);
   for(const tk of TOKEN_LIST){ const b=await new ethers.Contract(tk,erc20Abi,provider).balanceOf(wallet.address); console.log(`   - ${info[tk].symbol}: ${parseFloat(ethers.utils.formatUnits(b,info[tk].decimals))}`);} 
 
   // 3. swap back
-  console.log(chalk.blue('\n🔄 Swapping remaining tokens to ETH…'));
+  console.log(chalk.blue('\n🔄 Swapping remaining tokens to XOS…'));
   for(const tk of TOKEN_LIST){ const bn=await new ethers.Contract(tk,erc20Abi,provider).balanceOf(wallet.address); if(bn.isZero())continue; await swap(tk,WNATIVE,ethers.utils.formatUnits(bn,info[tk].decimals),info); console.log(chalk.gray(`⏱ Waiting ${DELAY_MS}ms`)); await sleep(DELAY_MS);}  
   console.log(chalk.blue('\n🎉 All done!'));
 })();
