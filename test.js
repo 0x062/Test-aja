@@ -19,14 +19,14 @@ const RPC_URL = process.env.RPC_URL;
 const ROUTER_ADDRESS = process.env.ROUTER_ADDRESS;
 
 // Addresses (replace with real ones)
-const WNATIVE = '0xWrappedNativeAddress'; // e.g. WXOS
-const USDT = '0xUSDTContractAddress';
+const WNATIVE = process.env.WNATIVE; // e.g. WXOS
+const USDT = process.env.USDT;
 
 // Swap settings:
 const AMOUNT_IN = ethers.utils.parseUnits('0.001', 18); // 0.001 XOS
 const SLIPPAGE = 0.01; // 1%
 const DEADLINE_OFFSET = 60 * 10; // 10 minutes
-const GAS_LIMIT = 300_000;
+const GAS_LIMIT = 300000;
 
 const ROUTER_ABI = [
   "function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) payable external returns (uint[] memory amounts)",
