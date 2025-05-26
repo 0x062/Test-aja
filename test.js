@@ -32,7 +32,7 @@ const GAS_LIMIT       = parseInt(process.env.GAS_LIMIT);
 // Hardcoded output tokens array (add more addresses as needed)
 const OUTPUT_TOKENS = [
   '0xUSDTContractAddress',
-  '0xUSDCContractAddress',
+  '0xb2C1C007421f0Eb5f4B3b3F38723C309Bb208d7d',
   // '0xAnotherTokenAddress',
 ];
 
