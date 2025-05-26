@@ -21,22 +21,20 @@ const { ethers } = require('ethers');
 require('dotenv').config();
 
 // Validate private key
-let pk = (process.env.PRIVATE_KEY || '').trim();
-if (!pk.startsWith('0x') || pk.length !== 66) {
-  console.error('❌ PRIVATE_KEY invalid.');
+const PRIVATE_KEY_ENV = (process.env.PRIVATE_KEY || '').trim();
+if (!PRIVATE_KEY_ENV.startsWith('0x') || PRIVATE_KEY_ENV.length !== 66) {
+  console.error('❌ PRIVATE_KEY invalid. Pastikan format “0x...” dan panjang 66 karakter.');
   process.exit(1);
 }
-
-// Load config
-const PRIVATE_KEY     = pk;
+const PRIVATE_KEY     = PRIVATE_KEY_ENV;
 const RPC_URL         = process.env.RPC_URL;
 const ROUTER_ADDRESS  = process.env.ROUTER_ADDRESS;
 const WNATIVE         = process.env.WNATIVE;
 const NATIVE_SYMBOL   = process.env.NATIVE_SYMBOL || 'NATIVE';
 const AMOUNT_IN       = ethers.utils.parseUnits(process.env.AMOUNT_IN, 18);
 const SLIPPAGE        = parseFloat(process.env.SLIPPAGE) / 100;
-const DEADLINE_OFFSET = parseInt(process.env.DEADLINE_MINUTES) * 60;
-const GAS_LIMIT       = parseInt(process.env.GAS_LIMIT);
+const DEADLINE_OFFSET = parseInt(process.env.DEADLINE_MINUTES, 10) * 60;
+const GAS_LIMIT       = parseInt(process.env.GAS_LIMIT, 10);
 
 // Hardcoded output tokens
 const OUTPUT_TOKENS   = [
@@ -44,7 +42,8 @@ const OUTPUT_TOKENS   = [
   '0xb2C1C007421f0Eb5f4B3b3F38723C309Bb208d7d',  // USDC
 ];
 
-// ABIs\ nconst ROUTER_ABI = [
+// ABIs
+const ROUTER_ABI = [
   "function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) payable external returns (uint[] memory amounts)",
   "function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts)"
 ];
@@ -54,24 +53,26 @@ const TOKEN_ABI = [
   "function balanceOf(address owner) external view returns (uint256)"
 ];
 
-// Initialize
+// Initialize provider, wallet, and router
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
 const wallet   = new ethers.Wallet(PRIVATE_KEY, provider);
 const router   = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, wallet);
 
 (async () => {
-  // Fetch chain and token metadata
+  // Fetch chainId and token metadata
   const network = await provider.getNetwork();
   console.log(`🌐 Network: chainId=${network.chainId}`);
 
   const ALL_TOKENS = [WNATIVE, ...OUTPUT_TOKENS];
   const tokenInfo = {};
+
   for (const addr of ALL_TOKENS) {
     const t = new ethers.Contract(addr, TOKEN_ABI, provider);
     try {
       const [sym, dec] = await Promise.all([t.symbol(), t.decimals()]);
       tokenInfo[addr] = { symbol: sym, decimals: dec };
     } catch {
+      console.warn(`⚠️ Metadata fetch failed for ${addr}, using defaults.`);
       tokenInfo[addr] = { symbol: addr, decimals: 18 };
     }
   }
@@ -88,29 +89,33 @@ const router   = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, wallet);
 
   // Perform swaps
   console.log(`\n🤖 AutoSwap: ${NATIVE_SYMBOL} → ${OUTPUT_TOKENS.map(a => tokenInfo[a].symbol).join(', ')}`);
+
   for (const addr of OUTPUT_TOKENS) {
     const { symbol, decimals } = tokenInfo[addr];
     console.log(`\n🔄 Swapping to ${symbol}`);
 
-    // Estimate amounts
+    // Estimate output
     let amounts;
     try {
       amounts = await router.getAmountsOut(AMOUNT_IN, [WNATIVE, addr]);
     } catch (e) {
-      console.error(`❌ Cannot estimate for ${symbol}: ${e.message}`);
+      console.error(`❌ Cannot estimate for ${symbol}:`, e.message);
       continue;
     }
-    const rawOutMin = amounts[1].mul((1 - SLIPPAGE) * 1000).div(1000);
+
+    const rawOutMin = amounts[1]
+      .mul(ethers.BigNumber.from(Math.floor((1 - SLIPPAGE) * 1000)))
+      .div(ethers.BigNumber.from(1000));
     const formattedIn  = ethers.utils.formatUnits(AMOUNT_IN, 18);
     const formattedOut = ethers.utils.formatUnits(rawOutMin, decimals);
     console.log(`➡️ ${formattedIn} ${NATIVE_SYMBOL} → ≥ ${formattedOut} ${symbol}`);
 
-    // Fetch dynamic gas fees
-    const feeData = await provider.getFeeData();
-    const maxFeePerGas       = feeData.maxFeePerGas.mul(110).div(100);
+    // Dynamic gas fee estimates (EIP-1559)
+    const feeData             = await provider.getFeeData();
+    const maxFeePerGas        = feeData.maxFeePerGas.mul(110).div(100);
     const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas.mul(110).div(100);
 
-    // Execute swap with EIP-1559
+    // Execute swap
     let tx;
     try {
       tx = await router.swapExactETHForTokens(
@@ -127,13 +132,17 @@ const router   = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, wallet);
       );
       console.log(`🚀 Tx (${symbol}): ${tx.hash}`);
     } catch (e) {
-      console.error(`❌ Swap failed for ${symbol}: ${e.message}`);
+      console.error(`❌ Swap failed for ${symbol}:`, e.message);
       continue;
     }
 
-    // await confirmation
-    const receipt = await tx.wait();
-    console.log(`✅ Confirmed ${symbol} in block ${receipt.blockNumber}`);
+    // Await confirmation
+    try {
+      const receipt = await tx.wait();
+      console.log(`✅ Confirmed ${symbol} in block ${receipt.blockNumber}`);
+    } catch (e) {
+      console.error(`❌ Confirmation failed for ${symbol}:`, e.message);
+    }
   }
 
   console.log('\n🎉 Done!');
