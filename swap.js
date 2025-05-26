@@ -149,7 +149,7 @@ async function swap(from, to, amountRaw, tokenInfo) {
   console.log(chalk.magenta('\n📊 Balances after swaps:'));
   // Native ETH balance
   const ethBal = await provider.getBalance(wallet.address);
-  console.log(`   - ETH: ${parseFloat(ethers.utils.formatEther(ethBal))}`);
+  console.log(`   - XOS: ${parseFloat(ethers.utils.formatEther(ethBal))}`);
   // WNATIVE token balance
   const wToken = new ethers.Contract(WNATIVE, erc20Abi, provider);
   const wBalBN = await wToken.balanceOf(wallet.address);
