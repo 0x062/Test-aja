@@ -1,5 +1,5 @@
 // AutoSwap Bot in JavaScript using ethers.js
-// Enhanced: Check balances of XOS (native), WXOS, and output ERC-20 tokens before swaps.
+// Initial balance check only; dynamic EIP-1559 gas fees to reduce costs
 
 // Requirements:
 // - Node.js
@@ -10,40 +10,41 @@
 // PRIVATE_KEY=your_wallet_private_key
 // RPC_URL=https://rpc.freeswap.org
 // ROUTER_ADDRESS=0xYourRouterAddress
-// WNATIVE=0xWrappedNativeAddress       // e.g. WXOS
+// WNATIVE=0xWrappedNativeAddress       // e.g. WXOS contract
 // NATIVE_SYMBOL=XOS                    // Human-readable native token name
 // AMOUNT_IN=0.001                      // in native units (XOS)
 // SLIPPAGE=1                           // in percent
 // DEADLINE_MINUTES=10                  // deadline offset in minutes
-// GAS_LIMIT=300000
+// GAS_LIMIT=210000                     // lowered gasLimit
 
 const { ethers } = require('ethers');
 require('dotenv').config();
 
-// Load config and validate private key
+// Validate private key
 let pk = (process.env.PRIVATE_KEY || '').trim();
 if (!pk.startsWith('0x') || pk.length !== 66) {
-  console.error('❌ PRIVATE_KEY invalid. Pastikan format “0x...” dan panjang 66 karakter.');
+  console.error('❌ PRIVATE_KEY invalid.');
   process.exit(1);
 }
+
+// Load config
 const PRIVATE_KEY     = pk;
 const RPC_URL         = process.env.RPC_URL;
 const ROUTER_ADDRESS  = process.env.ROUTER_ADDRESS;
 const WNATIVE         = process.env.WNATIVE;
-const NATIVE_SYMBOL   = process.env.NATIVE_SYMBOL || 'XOS';
+const NATIVE_SYMBOL   = process.env.NATIVE_SYMBOL || 'NATIVE';
 const AMOUNT_IN       = ethers.utils.parseUnits(process.env.AMOUNT_IN, 18);
 const SLIPPAGE        = parseFloat(process.env.SLIPPAGE) / 100;
 const DEADLINE_OFFSET = parseInt(process.env.DEADLINE_MINUTES) * 60;
 const GAS_LIMIT       = parseInt(process.env.GAS_LIMIT);
 
-// Hardcoded output tokens (addresses)
+// Hardcoded output tokens
 const OUTPUT_TOKENS   = [
   '0x2CCDB83a043A32898496c1030880Eb2cB977CAbc',  // USDT
   '0xb2C1C007421f0Eb5f4B3b3F38723C309Bb208d7d',  // USDC
 ];
 
-// ABIs
-const ROUTER_ABI = [
+// ABIs\ nconst ROUTER_ABI = [
   "function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) payable external returns (uint[] memory amounts)",
   "function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts)"
 ];
@@ -53,101 +54,87 @@ const TOKEN_ABI = [
   "function balanceOf(address owner) external view returns (uint256)"
 ];
 
-// Initialize provider, wallet, and router
+// Initialize
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
 const wallet   = new ethers.Wallet(PRIVATE_KEY, provider);
 const router   = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, wallet);
 
-/**
- * Check and print balances of native XOS, wrapped XOS, and each output token
- */
-async function checkBalances(tokenInfo) {
-  console.log(`\n🔍 Checking balances for wallet: ${wallet.address}`);
-  // Native balance
-  const nativeBal = await provider.getBalance(wallet.address);
-  console.log(`💰 ${NATIVE_SYMBOL} Balance: ${ethers.utils.formatEther(nativeBal)}`);
-
-  // Wrapped native (WXOS) and output tokens
-  for (const addr of [WNATIVE, ...Object.keys(tokenInfo)]) {
-    const { symbol, decimals } = tokenInfo[addr] || {};
-    const token = new ethers.Contract(addr, TOKEN_ABI, provider);
-    try {
-      const bal = await token.balanceOf(wallet.address);
-      const label = symbol || addr;
-      console.log(`💳 ${label} Balance: ${ethers.utils.formatUnits(bal, decimals)}`);
-    } catch (e) {
-      console.warn(`⚠️ Gagal fetch balance untuk ${addr}:`, e.message);
-    }
-  }
-}
-
 (async () => {
-  // 1. Fetch metadata for tokens
+  // Fetch chain and token metadata
+  const network = await provider.getNetwork();
+  console.log(`🌐 Network: chainId=${network.chainId}`);
+
+  const ALL_TOKENS = [WNATIVE, ...OUTPUT_TOKENS];
   const tokenInfo = {};
-  for (const addr of OUTPUT_TOKENS) {
+  for (const addr of ALL_TOKENS) {
     const t = new ethers.Contract(addr, TOKEN_ABI, provider);
     try {
       const [sym, dec] = await Promise.all([t.symbol(), t.decimals()]);
       tokenInfo[addr] = { symbol: sym, decimals: dec };
-    } catch (e) {
+    } catch {
       tokenInfo[addr] = { symbol: addr, decimals: 18 };
     }
   }
 
-  // 2. Display initial balances
-  await checkBalances(tokenInfo);
+  // Initial balance check
+  console.log(`\n🔍 Initial Balances for ${wallet.address}`);
+  const nativeBal = await provider.getBalance(wallet.address);
+  console.log(`💰 ${NATIVE_SYMBOL}: ${ethers.utils.formatEther(nativeBal)}`);
+  for (const addr of ALL_TOKENS) {
+    const { symbol, decimals } = tokenInfo[addr];
+    const bal = await (new ethers.Contract(addr, TOKEN_ABI, provider)).balanceOf(wallet.address);
+    console.log(`💳 ${symbol}: ${ethers.utils.formatUnits(bal, decimals)}`);
+  }
 
-  // 3. Perform swaps
-  console.log(`\n🤖 Starting AutoSwap: ${NATIVE_SYMBOL} → ${OUTPUT_TOKENS.map(a => tokenInfo[a].symbol).join(', ')}`);
-
+  // Perform swaps
+  console.log(`\n🤖 AutoSwap: ${NATIVE_SYMBOL} → ${OUTPUT_TOKENS.map(a => tokenInfo[a].symbol).join(', ')}`);
   for (const addr of OUTPUT_TOKENS) {
     const { symbol, decimals } = tokenInfo[addr];
-    const path = [WNATIVE, addr];
+    console.log(`\n🔄 Swapping to ${symbol}`);
 
-    console.log(`\n🔄 Processing ${symbol}...`);
+    // Estimate amounts
     let amounts;
     try {
-      amounts = await router.getAmountsOut(AMOUNT_IN, path);
-    } catch (err) {
-      console.error(`❌ getAmountsOut gagal untuk ${symbol}:`, err.message);
+      amounts = await router.getAmountsOut(AMOUNT_IN, [WNATIVE, addr]);
+    } catch (e) {
+      console.error(`❌ Cannot estimate for ${symbol}: ${e.message}`);
       continue;
     }
-
-    const rawOutMin = amounts[1]
-      .mul(ethers.BigNumber.from(Math.floor((1 - SLIPPAGE) * 1000)))
-      .div(ethers.BigNumber.from(1000));
+    const rawOutMin = amounts[1].mul((1 - SLIPPAGE) * 1000).div(1000);
     const formattedIn  = ethers.utils.formatUnits(AMOUNT_IN, 18);
     const formattedOut = ethers.utils.formatUnits(rawOutMin, decimals);
-    const deadline     = Math.floor(Date.now() / 1000) + DEADLINE_OFFSET;
+    console.log(`➡️ ${formattedIn} ${NATIVE_SYMBOL} → ≥ ${formattedOut} ${symbol}`);
 
-    console.log(`➡️ Swapping ${formattedIn} ${NATIVE_SYMBOL} for ≥ ${formattedOut} ${symbol}`);
+    // Fetch dynamic gas fees
+    const feeData = await provider.getFeeData();
+    const maxFeePerGas       = feeData.maxFeePerGas.mul(110).div(100);
+    const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas.mul(110).div(100);
 
+    // Execute swap with EIP-1559
     let tx;
     try {
       tx = await router.swapExactETHForTokens(
         rawOutMin,
-        path,
+        [WNATIVE, addr],
         wallet.address,
-        deadline,
-        { value: AMOUNT_IN, gasLimit: GAS_LIMIT }
+        Math.floor(Date.now() / 1000) + DEADLINE_OFFSET,
+        {
+          value: AMOUNT_IN,
+          gasLimit: GAS_LIMIT,
+          maxFeePerGas,
+          maxPriorityFeePerGas
+        }
       );
-      console.log(`🚀 Tx sent (${symbol}): ${tx.hash}`);
-    } catch (err) {
-      console.error(`❌ SwapExactETHForTokens gagal untuk ${symbol}:`, err.message);
+      console.log(`🚀 Tx (${symbol}): ${tx.hash}`);
+    } catch (e) {
+      console.error(`❌ Swap failed for ${symbol}: ${e.message}`);
       continue;
     }
 
-    try {
-      const receipt = await tx.wait();
-      console.log(`✅ Swap ${symbol} confirmed in block ${receipt.blockNumber}`);
-    } catch (err) {
-      console.error(`❌ Konfirmasi gagal untuk ${symbol}:`, err.message);
-    }
-
-    // 4. Show balances after each swap
-    console.log(`\n🔍 Balances after swapping ${symbol}:`);
-    await checkBalances(tokenInfo);
+    // await confirmation
+    const receipt = await tx.wait();
+    console.log(`✅ Confirmed ${symbol} in block ${receipt.blockNumber}`);
   }
 
-  console.log(`\n🎉 Semua swaps selesai!`);
+  console.log('\n🎉 Done!');
 })();
