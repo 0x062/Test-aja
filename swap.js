@@ -3,7 +3,6 @@ require('dotenv').config();
 
 const PRIVATE_KEY    = (process.env.PRIVATE_KEY || '').trim();
 if (!PRIVATE_KEY.startsWith('0x') || PRIVATE_KEY.length !== 66) process.exit(1);
-
 const RPC_URL        = process.env.RPC_URL;
 const ROUTER_ADDRESS = process.env.ROUTER_ADDRESS;
 const WNATIVE        = process.env.WNATIVE;
@@ -65,7 +64,7 @@ const router   = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, wallet);
     }
   }
 
-  const AMOUNT_IN = ethers.utils.parseUnits(AMOUNT_IN_RAW, 18);
+  const AMOUNT_IN_GENERIC = AMOUNT_IN_RAW;
 
   console.log(`\n🔍 Balances for ${wallet.address}`);
   const balETH = await provider.getBalance(wallet.address);
@@ -81,13 +80,14 @@ const router   = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, wallet);
   for (const { from, to } of SWAP_PAIRS) {
     const infoFrom = tokenInfo[from];
     const infoTo   = tokenInfo[to];
-    const isNative = (from === WNATIVE);
-    const path     = isNative ? [WNATIVE, to] : [from, WNATIVE, to];
+    const amountIn = ethers.utils.parseUnits(AMOUNT_IN_GENERIC, infoFrom.decimals);
+    const path     = (from === WNATIVE) ? [WNATIVE, to] : [from, WNATIVE, to];
 
     console.log(`\n🔄 Swap ${infoFrom.symbol}→${infoTo.symbol}`);
+
     let amounts;
     try {
-      amounts = await router.getAmountsOut(AMOUNT_IN, path);
+      amounts = await router.getAmountsOut(amountIn, path);
     } catch (e) {
       console.error(`❌ estimate failed: ${e.message}`);
       continue;
@@ -96,18 +96,30 @@ const router   = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, wallet);
     const rawOutMin = amounts[amounts.length - 1]
       .mul(ethers.BigNumber.from(Math.floor((1 - SLIPPAGE) * 1000)))
       .div(ethers.BigNumber.from(1000));
-    const fmtIn  = ethers.utils.formatUnits(AMOUNT_IN, infoFrom.decimals);
-    const fmtOut = ethers.utils.formatUnits(rawOutMin, infoTo.decimals);
-    console.log(`➡️ ${fmtIn} ${infoFrom.symbol} → ≥ ${fmtOut} ${infoTo.symbol}`);
 
-    if (!isNative) {
+    console.log(`➡️ simulate getAmountsOut: ${ethers.utils.formatUnits(amounts[amounts.length - 1], infoTo.decimals)} ${infoTo.symbol}`);
+
+    const before = await new ethers.Contract(to, BALANCE_ABI, provider).balanceOf(wallet.address);
+
+    try {
+      const simulate = await router.callStatic.swapExactTokensForTokens(
+        amountIn,
+        rawOutMin,
+        path,
+        wallet.address,
+        Math.floor(Date.now() / 1000) + DEADLINE_SEC
+      );
+      console.log(`🔍 simulate output: ${ethers.utils.formatUnits(simulate[simulate.length - 1], infoTo.decimals)} ${infoTo.symbol}`);
+    } catch {
+      // skip simulation if it's the native swap
+    }
+
+    if (from !== WNATIVE) {
       const token     = new ethers.Contract(from, ERC20_ABI, wallet);
       const allowance = await token.allowance(wallet.address, ROUTER_ADDRESS);
-      if (allowance.lt(AMOUNT_IN)) {
-        console.log(`🔑 Approving ${infoFrom.symbol}...`);
+      if (allowance.lt(amountIn)) {
         const approveTx = await token.approve(ROUTER_ADDRESS, ethers.constants.MaxUint256);
-        const approveRc = await approveTx.wait();
-        console.log(`✅ Approval confirmed in block ${approveRc.blockNumber}`);
+        await approveTx.wait();
       }
     }
 
@@ -115,32 +127,33 @@ const router   = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, wallet);
     const maxFee  = feeData.maxFeePerGas.mul(110).div(100);
     const maxPri  = feeData.maxPriorityFeePerGas.mul(110).div(100);
 
-    try {
-      let tx;
-      if (isNative) {
-        tx = await router.swapExactETHForTokens(
-          rawOutMin,
-          path,
-          wallet.address,
-          Math.floor(Date.now() / 1000) + DEADLINE_SEC,
-          { value: AMOUNT_IN, gasLimit: GAS_LIMIT, maxFeePerGas: maxFee, maxPriorityFeePerGas: maxPri }
-        );
-      } else {
-        tx = await router.swapExactTokensForTokens(
-          AMOUNT_IN,
-          rawOutMin,
-          path,
-          wallet.address,
-          Math.floor(Date.now() / 1000) + DEADLINE_SEC,
-          { gasLimit: GAS_LIMIT, maxFeePerGas: maxFee, maxPriorityFeePerGas: maxPri }
-        );
-      }
-      console.log(`🚀 Tx (${infoTo.symbol}): ${tx.hash}`);
-      const rc = await tx.wait();
-      console.log(`✅ Confirmed in block ${rc.blockNumber}`);
-    } catch (e) {
-      console.error(`❌ Swap failed: ${e.message}`);
+    let tx;
+    if (from === WNATIVE) {
+      tx = await router.swapExactETHForTokens(
+        rawOutMin,
+        path,
+        wallet.address,
+        Math.floor(Date.now() / 1000) + DEADLINE_SEC,
+        { value: amountIn, gasLimit: GAS_LIMIT, maxFeePerGas: maxFee, maxPriorityFeePerGas: maxPri }
+      );
+    } else {
+      tx = await router.swapExactTokensForTokens(
+        amountIn,
+        rawOutMin,
+        path,
+        wallet.address,
+        Math.floor(Date.now() / 1000) + DEADLINE_SEC,
+        { gasLimit: GAS_LIMIT, maxFeePerGas: maxFee, maxPriorityFeePerGas: maxPri }
+      );
     }
+
+    console.log(`🚀 tx hash: ${tx.hash}`);
+    const receipt = await tx.wait();
+    console.log(`📋 receipt status: ${receipt.status === 1 ? 'success' : 'failed'}`);
+
+    const after = await new ethers.Contract(to, BALANCE_ABI, provider).balanceOf(wallet.address);
+    const diff  = ethers.BigNumber.from(after).sub(before);
+    console.log(`✅ actual received: ${ethers.utils.formatUnits(diff, infoTo.decimals)} ${infoTo.symbol}`);
   }
 
   console.log('\n🎉 All done!');
