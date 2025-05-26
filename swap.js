@@ -58,7 +58,7 @@ const BALANCE_ABI = [
   "function balanceOf(address) view returns(uint256)"
 ];
 
-// Initialize provider, wallet, router\ nconst provider = new ethers.providers.JsonRpcProvider(RPC_URL);
+const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
 const wallet   = new ethers.Wallet(PRIVATE_KEY, provider);
 const router   = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, wallet);
 
