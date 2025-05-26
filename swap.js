@@ -68,7 +68,7 @@ async function loadTokenInfo(addresses) {
   const info = {};
   for (const addr of addresses) {
     if (addr === WNATIVE) {
-      info[addr] = { symbol: process.env.NATIVE_SYMBOL || 'NATIVE', decimals: 18 };
+      info[addr] = { symbol: process.env.NATIVE_SYMBOL || 'ETH', decimals: 18 };
     } else {
       const t = new ethers.Contract(addr, erc20Abi, provider);
       try {
@@ -145,14 +145,13 @@ async function swap(from, to, amountRaw, tokenInfo) {
     await sleep(DELAY_MS);
   }
 
-  // 2. Display balances: native, WNATIVE, then tokens
+  // 2. Display balances: ETH, WNATIVE, then tokens
   console.log(chalk.magenta('\n📊 Balances after swaps:'));
-  // Native ETH balance
+  // ETH
   const ethBal = await provider.getBalance(wallet.address);
-  console.log(`   - XOS: ${parseFloat(ethers.utils.formatEther(ethBal))}`);
-  // WNATIVE token balance
-  const wToken = new ethers.Contract(WNATIVE, erc20Abi, provider);
-  const wBalBN = await wToken.balanceOf(wallet.address);
+  console.log(`   - ETH: ${parseFloat(ethers.utils.formatEther(ethBal))}`);
+  // WNATIVE
+  const wBalBN = await new ethers.Contract(WNATIVE, erc20Abi, provider).balanceOf(wallet.address);
   console.log(`   - ${tokenInfo[WNATIVE].symbol}: ${parseFloat(ethers.utils.formatUnits(wBalBN, tokenInfo[WNATIVE].decimals))}`);
   // Other tokens
   for (const tokenAddr of TOKEN_LIST) {
