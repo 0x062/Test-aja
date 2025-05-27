@@ -2,7 +2,7 @@ const { ethers } = require('ethers');
 const chalk = require('chalk');
 require('dotenv').config();
 
-// --- Konfigurasi & Validasi (Sama seperti sebelumnya) ---
+// --- Konfigurasi & Validasi ---
 const PRIVATE_KEY = (process.env.PRIVATE_KEY || '').trim();
 const RPC_URL = process.env.RPC_URL;
 const ROUTER_ADDRESS = process.env.ROUTER_ADDRESS;
@@ -11,34 +11,45 @@ const NATIVE_SYMBOL = process.env.NATIVE_SYMBOL || 'ETH';
 const AMOUNT_IN_RAW = process.env.AMOUNT_IN;
 const SLIPPAGE = parseFloat(process.env.SLIPPAGE || '1') / 100;
 const DEADLINE_SEC = parseInt(process.env.DEADLINE_MINUTES || '5', 10) * 60;
-const GAS_LIMIT = parseInt(process.env.GAS_LIMIT || '250000', 10);
+const GAS_LIMIT = parseInt(process.env.GAS_LIMIT || '300000', 10); // Sedikit dinaikkan untuk jaga-jaga
 const DELAY_MS = parseInt(process.env.DELAY_MS, 10) || 5000;
 const TOKENS_ENV = process.env.TOKENS || '';
 
-// --- Validasi Env Vars (Sama seperti sebelumnya, tapi tanpa log awal) ---
 if (!PRIVATE_KEY || !PRIVATE_KEY.startsWith('0x') || PRIVATE_KEY.length !== 66) { console.error(chalk.red('❌ PRIVATE_KEY tidak valid atau hilang di .env')); process.exit(1); }
 if (!RPC_URL || !ROUTER_ADDRESS || !WNATIVE || !AMOUNT_IN_RAW || !TOKENS_ENV) { console.error(chalk.red('❌ Variabel .env yang wajib diisi hilang.')); process.exit(1); }
 const TOKEN_LIST = TOKENS_ENV.split(',').map(t => ethers.utils.getAddress(t.trim())).filter(t => t);
 if (TOKEN_LIST.length === 0) { console.error(chalk.red('❌ Variabel TOKENS harus berisi setidaknya satu alamat token.')); process.exit(1); }
 
-// --- Membuat Pasangan Swap (Sama seperti sebelumnya, tanpa log) ---
 const SWAP_PAIRS = [];
 TOKEN_LIST.forEach(token => SWAP_PAIRS.push({ from: WNATIVE, to: token }));
 for (let i = 0; i < TOKEN_LIST.length; i++) { for (let j = 0; j < TOKEN_LIST.length; j++) { if (i !== j) { SWAP_PAIRS.push({ from: TOKEN_LIST[i], to: TOKEN_LIST[j] }); } } }
 
-// --- Setup Ethers.js (Sama seperti sebelumnya) ---
+// --- Setup Ethers.js ---
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
 const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
 
-// --- ABI (Sama seperti sebelumnya) ---
-const routerAbi = [ /* ... ABI lama ... */ 'function swapExactETHForTokens(uint256,address[],address,uint256) payable returns(uint256[])','function swapExactTokensForTokens(uint256,uint256,address[],address,uint256) returns(uint256[])','function swapExactTokensForETH(uint256,uint256,address[],address,uint256) returns(uint256[])','function getAmountsOut(uint256,address[]) view returns(uint256[])','function WETH() view returns (address)'];
-const erc20Abi = [ /* ... ABI lama ... */ 'function symbol() view returns(string)', 'function decimals() view returns(uint8)', 'function allowance(address,address) view returns(uint256)', 'function approve(address,uint256) returns(bool)', 'function balanceOf(address) view returns(uint256)'];
+// --- ABI (Application Binary Interface) ---
+const routerAbi = [
+    'function swapExactETHForTokens(uint256,address[],address,uint256) payable returns(uint256[])',
+    'function swapExactTokensForTokens(uint256,uint256,address[],address,uint256) returns(uint256[])',
+    'function swapExactTokensForETH(uint256,uint256,address[],address,uint256) returns(uint256[])',
+    'function getAmountsOut(uint256,address[]) view returns(uint256[])',
+    'function WETH() view returns (address)'
+];
+const erc20Abi = [
+    'function symbol() view returns(string)',
+    'function decimals() view returns(uint8)',
+    'function allowance(address,address) view returns(uint256)',
+    'function approve(address,uint256) returns(bool)',
+    'function balanceOf(address) view returns(uint256)'
+];
 const router = new ethers.Contract(ROUTER_ADDRESS, routerAbi, wallet);
 const sleep = ms => new Promise(res => setTimeout(res, ms));
 
 // --- Fungsi Helper Cantik ---
 const logLine = (color = 'blue', length = 70) => console.log(chalk[color]('='.repeat(length)));
 const logHeader = (text, color = 'blue') => {
+    console.log(''); // Beri spasi sebelum header
     logLine(color);
     console.log(chalk[color].bold(` ${text} `));
     logLine(color);
@@ -52,12 +63,10 @@ const logFailure = (text, error = null) => {
     if (error) {
         if (error.reason) console.error(chalk.red.dim(`      Reason: ${error.reason}`));
         if (error.code) console.error(chalk.red.dim(`      Code: ${error.code}`));
-        // console.error(chalk.red.dim(error)); // Uncomment untuk error lengkap
     }
 }
 
-// --- Fungsi Helper Inti (Dengan Logging Baru) ---
-
+// --- Fungsi Helper Inti ---
 async function loadTokenInfo(addrs) {
     logHeader('1. MEMUAT INFORMASI TOKEN', 'magenta');
     const info = {};
@@ -104,8 +113,8 @@ async function ensureAllowance(tokenAddress, amountIn, tokenInfo) {
 
 async function getSwapPath(from, to, amountIn, tokenInfo) {
     const pathsToTry = [];
-    if (from === WNATIVE) pathsToTry.push([WNATIVE, to]);
-    else if (to === WNATIVE) pathsToTry.push([from, WNATIVE]);
+    if (from.toLowerCase() === WNATIVE.toLowerCase()) pathsToTry.push([WNATIVE, to]);
+    else if (to.toLowerCase() === WNATIVE.toLowerCase()) pathsToTry.push([from, WNATIVE]);
     else { pathsToTry.push([from, to]); pathsToTry.push([from, WNATIVE, to]); }
 
     for (const path of pathsToTry) {
@@ -113,25 +122,57 @@ async function getSwapPath(from, to, amountIn, tokenInfo) {
             await router.getAmountsOut(amountIn, path);
             logSubStep(`Path ditemukan: ${chalk.cyan(path.map(p => tokenInfo[p].symbol).join(' → '))}`);
             return path;
-        } catch (e) { /* Abaikan & coba path berikutnya */ }
+        } catch (e) { /* Abaikan */ }
     }
     return null;
 }
 
+async function showBalances(allAddrs, tkInfo) {
+    logHeader('📊 SALDO SAAT INI', 'magenta');
+    const balanceData = [];
+
+    const nativeBal = await provider.getBalance(wallet.address);
+    balanceData.push({ Token: NATIVE_SYMBOL, Alamat: 'N/A', Saldo: ethers.utils.formatEther(nativeBal), Color: 'yellow' });
+
+    for (const addr of allAddrs) {
+        const contract = new ethers.Contract(addr, erc20Abi, provider);
+        const balance = await contract.balanceOf(wallet.address);
+        if (!balance.isZero() || addr.toLowerCase() === WNATIVE.toLowerCase()) {
+             balanceData.push({ Token: tkInfo[addr].symbol, Alamat: addr, Saldo: ethers.utils.formatUnits(balance, tkInfo[addr].decimals), Color: 'cyan' });
+        }
+    }
+
+    const maxTokenLen = Math.max(...balanceData.map(b => b.Token.length), 'Token'.length);
+    const maxAddrLen = Math.max(...balanceData.map(b => b.Alamat.length), 'Alamat'.length);
+    const maxBalLen = Math.max(...balanceData.map(b => b.Saldo.length), 'Saldo'.length);
+    const line = `  +-${'-'.repeat(maxTokenLen)}-+-${'-'.repeat(maxAddrLen)}-+-${'-'.repeat(maxBalLen)}-+`;
+
+    console.log(chalk.gray(line));
+    console.log(`  | ${chalk.bold('Token'.padEnd(maxTokenLen))} | ${chalk.bold('Alamat'.padEnd(maxAddrLen))} | ${chalk.bold('Saldo'.padEnd(maxBalLen))} |`);
+    console.log(chalk.gray(line));
+    balanceData.forEach(item => {
+        const token = chalk[item.Color].bold(item.Token.padEnd(maxTokenLen));
+        const alamat = chalk.gray(item.Alamat.padEnd(maxAddrLen));
+        const saldo = chalk.white(item.Saldo.padEnd(maxBalLen));
+        console.log(`  | ${token} | ${alamat} | ${saldo} |`);
+    });
+    console.log(chalk.gray(line));
+}
+
 async function executeSwap(from, to, amountRaw, tokenInfo) {
     const { symbol: symIn, decimals: decIn } = tokenInfo[from];
-    const { symbol: symOut, decimals: decOut } = tokenInfo[to];
     const amountIn = ethers.utils.parseUnits(amountRaw, decIn);
+    const symOut = tokenInfo[to].symbol; // Ambil symOut lebih awal
 
     logStep(`Swap ${chalk.bold(amountRaw)} ${chalk.bold(symIn)} → ${chalk.bold(symOut)}`);
 
     const gasPrice = await provider.getGasPrice();
     const ethBal = await provider.getBalance(wallet.address);
     const feeCost = gasPrice.mul(GAS_LIMIT);
-    const totalCost = (from === WNATIVE) ? feeCost.add(amountIn) : feeCost;
+    const totalCost = (from.toLowerCase() === WNATIVE.toLowerCase()) ? feeCost.add(amountIn) : feeCost;
 
     if (ethBal.lt(totalCost)) {
-        logFailure(`Saldo ${NATIVE_SYMBOL} tidak cukup (Butuh: ~${ethers.utils.formatEther(totalCost)} ${NATIVE_SYMBOL})`);
+        logFailure(`Saldo ${NATIVE_SYMBOL} tidak cukup (Butuh: ~${ethers.utils.formatEther(totalCost)})`);
         return false;
     }
 
@@ -145,76 +186,48 @@ async function executeSwap(from, to, amountRaw, tokenInfo) {
     const estOut = amountsOut[amountsOut.length - 1];
     const minOut = estOut.mul(Math.floor((1 - SLIPPAGE) * 10000)).div(10000);
     const deadline = Math.floor(Date.now() / 1000) + DEADLINE_SEC;
-    const finalSymOut = tokenInfo[path[path.length - 1]].symbol;
-    const finalDecOut = tokenInfo[path[path.length - 1]].decimals;
+    const finalTokenAddress = path[path.length - 1];
+    const finalSymOut = tokenInfo[finalTokenAddress].symbol;
+    const finalDecOut = tokenInfo[finalTokenAddress].decimals;
 
     logSubStep(`Est. Out   : ${chalk.green(ethers.utils.formatUnits(estOut, finalDecOut))} ${finalSymOut}`);
     logSubStep(`Min. Out   : ${chalk.yellow(ethers.utils.formatUnits(minOut, finalDecOut))} ${finalSymOut}`);
 
-    if (from !== WNATIVE) { try { await ensureAllowance(from, amountIn, tokenInfo); } catch (e) { return false; } }
+    if (from.toLowerCase() !== WNATIVE.toLowerCase()) { try { await ensureAllowance(from, amountIn, tokenInfo); } catch (e) { return false; } }
 
     let tx;
     try {
         const overrides = { gasLimit: GAS_LIMIT, gasPrice };
-        if (path[0] === WNATIVE) {
+        if (path[0].toLowerCase() === WNATIVE.toLowerCase()) {
             overrides.value = amountIn;
             tx = await router.swapExactETHForTokens(minOut, path, wallet.address, deadline, overrides);
-        } else if (path[path.length - 1] === WNATIVE) {
+        } else if (path[path.length - 1].toLowerCase() === WNATIVE.toLowerCase()) {
             tx = await router.swapExactTokensForETH(amountIn, minOut, path, wallet.address, deadline, overrides);
         } else {
             tx = await router.swapExactTokensForTokens(amountIn, minOut, path, wallet.address, deadline, overrides);
         }
 
-        logSubStep(`Tx Hash    : ${chalk.blue(tx.hash)}`);
-        process.stdout.write(`    ${chalk.gray('⏳ Menunggu konfirmasi... ')}`);
+        const shortHash = `${tx.hash.slice(0, 6)}...${tx.hash.slice(-4)}`;
+        logSubStep(`Tx Hash    : ${chalk.blue(shortHash)}`);
+        logSubStep(`⏳ Menunggu konfirmasi...`);
         const receipt = await tx.wait();
-        
+
         if (receipt.status === 1) {
-            console.log(chalk.green.bold('✅ BERHASIL!'));
+            logSuccess(`Transaksi ${shortHash} terkonfirmasi!`);
             return true;
         } else {
-            console.log(chalk.red.bold('❌ GAGAL!'));
-            logFailure(`Transaksi revert (Status 0). Hash: ${tx.hash}`);
+            logFailure(`Transaksi ${shortHash} revert (Status 0).`);
             return false;
         }
 
     } catch (error) {
-         console.log(chalk.red.bold('❌ ERROR!'));
          logFailure(`Panggilan transaksi gagal.`, error);
          return false;
     }
 }
 
-async function showBalances(allAddrs, tkInfo) {
-    logHeader('📊 SALDO SAAT INI', 'magenta');
-    const balanceData = [];
-
-    const nativeBal = await provider.getBalance(wallet.address);
-    balanceData.push({
-        'Token': chalk.yellow.bold(NATIVE_SYMBOL),
-        'Alamat': chalk.gray('N/A'),
-        'Saldo': chalk.yellow(ethers.utils.formatEther(nativeBal))
-    });
-
-    for (const addr of allAddrs) {
-        const contract = new ethers.Contract(addr, erc20Abi, provider);
-        const balance = await contract.balanceOf(wallet.address);
-        const formattedBalance = ethers.utils.formatUnits(balance, tkInfo[addr].decimals);
-        // Hanya tampilkan jika saldo > 0 (kecuali WXOS jika WXOS != XOS)
-        if (!balance.isZero() || addr === WNATIVE) {
-             balanceData.push({
-                'Token': chalk.cyan.bold(tkInfo[addr].symbol),
-                'Alamat': chalk.gray(addr),
-                'Saldo': chalk.white(formattedBalance)
-            });
-        }
-    }
-    console.table(balanceData); // Gunakan console.table!
-}
-
 // --- Fungsi Utama (Main) ---
 let tokenInfo = {};
-
 (async () => {
     logHeader('🚀 MEMULAI BOT SWAP 🚀', 'green');
     logInfo('RPC URL', RPC_URL);
@@ -223,7 +236,6 @@ let tokenInfo = {};
     logInfo('WNATIVE', WNATIVE);
     logInfo('Jumlah Swap Awal', `${AMOUNT_IN_RAW}`);
     logInfo('Slippage', `${SLIPPAGE * 100}%`);
-    console.log(''); // Spasi
 
     const allTokenAddresses = Array.from(new Set([WNATIVE, ...TOKEN_LIST]));
     tokenInfo = await loadTokenInfo(allTokenAddresses);
@@ -231,9 +243,8 @@ let tokenInfo = {};
     logHeader('2. SWAP AWAL', 'blue');
     for (const pair of SWAP_PAIRS) {
         await executeSwap(pair.from, pair.to, AMOUNT_IN_RAW, tokenInfo);
-        console.log(`    ${chalk.gray(`⏱️  Menunggu ${DELAY_MS / 1000} detik...`)}`);
+        logSubStep(chalk.gray(`⏱️  Menunggu ${DELAY_MS / 1000} detik...`));
         await sleep(DELAY_MS);
-        console.log(''); // Spasi antar swap
     }
 
     await showBalances(allTokenAddresses, tokenInfo);
@@ -246,14 +257,14 @@ let tokenInfo = {};
         if (!balance.isZero()) {
             const balanceFormatted = ethers.utils.formatUnits(balance, tokenInfo[tokenAddr].decimals);
             await executeSwap(tokenAddr, WNATIVE, balanceFormatted, tokenInfo);
-            console.log(`    ${chalk.gray(`⏱️  Menunggu ${DELAY_MS / 1000} detik...`)}`);
+            logSubStep(chalk.gray(`⏱️  Menunggu ${DELAY_MS / 1000} detik...`));
             await sleep(DELAY_MS);
-            console.log(''); // Spasi antar swap
+        } else {
+            logStep(`${tokenInfo[tokenAddr].symbol} saldo 0, swap dilewati.`);
         }
     }
 
     await showBalances(allTokenAddresses, tokenInfo);
-
     logHeader('🎉 SELESAI 🎉', 'green');
 
 })().catch(error => {
