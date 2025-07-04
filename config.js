@@ -54,6 +54,7 @@ export const CONTRACT_ABIS = {
             "stateMutability":"payable",
             "type":"function"
         },
+        {"inputs":[],"name":"factory","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
         // Fungsi untuk unwrap WXOS -> XOS (berguna nanti)
         {
             "inputs":[{"internalType":"uint256","name":"amountMinimum","type":"uint256"},{"internalType":"address","name":"recipient","type":"address"}],
