@@ -17,9 +17,11 @@ export const CONTRACT_ABIS = {
         "function symbol() view returns (string)",
         "function decimals() view returns (uint8)",
         "function balanceOf(address) view returns (uint256)",
-        "function approve(address spender, uint256 amount) returns (bool)"
+        "function approve(address spender, uint256 amount) returns (bool)",
+        // TAMBAHKAN BARIS INI! INI YANG KELUPAAN.
+        "function allowance(address owner, address spender) view returns (uint256)"
     ],
-    // Nanti kita akan tambahkan ABI untuk Router di sini saat masuk Babak 4
+    // ... (ROUTER ABI tidak berubah)
     ROUTER: [
         "function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) external payable"
     ]
