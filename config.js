@@ -1,13 +1,15 @@
-// config.js
-
-// Di sini kita kumpulkan semua alamat kontrak penting agar terpusat.
 export const CONTRACT_ADDRESSES = {
-    // Ganti dengan alamat USDC di XOS Testnet
-    USDC: '0xb2C1C007421f0Eb5f4B3b3F38723C309Bb208d7d',
-    // Ganti dengan alamat Router DEX yang sudah kamu temukan
     ROUTER: '0xdc7D6b58c89A554b3FDC4B5B10De9b4DbF39FB40',
-    WXOS: '0x0AAB67cf6F2e99847b9A95DeC950B250D648c1BB'
+    WXOS: '0x0AAB67cf6F2e99847b9A95DeC950B250D648c1BB', 
+    // TAMBAHKAN ALAMAT FACTORY V3 YANG KAMU TEMUKAN
+    FACTORY_V3: '0x8a3CC3a133480b394A975F8cD4668Ce8cC99Cb9B',
 };
+
+// DAFTAR TARGET KITA JADI LEBIH SIMPLE, TANPA FEE
+export const TARGET_TOKENS = [
+    { name: 'USDC', address: '0xb2C1C007421f0Eb5f4B3b3F38723C309Bb208d7d' },
+    { name: 'DAI',  address: 'ALAMAT_KONTRAK_DAI_JIKA_ADA' },
+];
 
 export const CONTRACT_ABIS = {
     ERC20: [
