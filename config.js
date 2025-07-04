@@ -11,7 +11,12 @@ export const CONTRACT_ADDRESSES = {
 
 export const CONTRACT_ABIS = {
     ERC20: [
-        // ... ABI ERC20 tidak berubah
+        "function name() view returns (string)",
+        "function symbol() view returns (string)",
+        "function decimals() view returns (uint8)",
+        "function balanceOf(address) view returns (uint256)",
+        "function approve(address spender, uint256 amount) returns (bool)",
+        "function allowance(address owner, address spender) view returns (uint256)"
     ],
     
     // Gunakan versi ringkas ini untuk Router
