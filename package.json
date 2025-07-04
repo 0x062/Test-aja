@@ -1,12 +1,21 @@
 {
-  "name": "test-aja",
+  "name": "bot-swap-kita",
   "version": "1.0.0",
-  "description": "",
+  "description": "Bot untuk swap token di XOS Testnet",
   "main": "swap.js",
   "type": "module",
-  "scripts": { ... },
-  "keywords": [],
+  "scripts": {
+    "start": "node swap.js"
+  },
+  "keywords": [
+    "ethers",
+    "bot",
+    "swap"
+  ],
   "author": "",
   "license": "ISC",
-  "dependencies": { ... }
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.0"
+  }
 }
