@@ -9,6 +9,10 @@ export const CONTRACT_ADDRESSES = {
 export const TARGET_TOKENS = [
     { name: 'USDC', address: '0xb2C1C007421f0Eb5f4B3b3F38723C309Bb208d7d' },
     { name: 'USDT',  address: '0x2CCDB83a043A32898496c1030880Eb2cB977CAbc' },
+    { name: 'JUP',  address: '0x26b597804318824a2E88Cd717376f025E6bb2219' },
+    { name: 'TRUMP',  address: '0xC09a5026d9244d482Fb913609Aeb7347B7F12800' },
+    { name: 'BNB',  address: '0x83DFbE02dc1B1Db11bc13a8Fc7fd011E2dBbd7c0' },
+    { name: 'SOL',  address: '0x0c8a3D1fE7E40a39D3331D5Fa4B9fee1EcA1926A' }
 ];
 
 export const CONTRACT_ABIS = {
