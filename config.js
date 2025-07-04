@@ -12,6 +12,11 @@ export const TARGET_TOKENS = [
 ];
 
 export const CONTRACT_ABIS = {
+
+    FACTORY_V3: [
+        "function getPool(address tokenA, address tokenB, uint24 fee) view returns (address)"
+    ],
+    
     ERC20: [
         "function name() view returns (string)",
         "function symbol() view returns (string)",
