@@ -8,7 +8,7 @@ export const CONTRACT_ADDRESSES = {
 // DAFTAR TARGET KITA JADI LEBIH SIMPLE, TANPA FEE
 export const TARGET_TOKENS = [
     { name: 'USDC', address: '0xb2C1C007421f0Eb5f4B3b3F38723C309Bb208d7d' },
-    { name: 'DAI',  address: 'ALAMAT_KONTRAK_DAI_JIKA_ADA' },
+    { name: 'USDT',  address: '0x2CCDB83a043A32898496c1030880Eb2cB977CAbc' },
 ];
 
 export const CONTRACT_ABIS = {
