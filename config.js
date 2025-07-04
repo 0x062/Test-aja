@@ -10,19 +10,21 @@ export const CONTRACT_ADDRESSES = {
 };
 
 // Di sini kita kumpulkan semua ABI (Application Binary Interface).
+// di dalam file config.js
+
 export const CONTRACT_ABIS = {
-    // ABI untuk token standar ERC-20
     ERC20: [
         "function name() view returns (string)",
         "function symbol() view returns (string)",
         "function decimals() view returns (uint8)",
         "function balanceOf(address) view returns (uint256)",
         "function approve(address spender, uint256 amount) returns (bool)",
-        // TAMBAHKAN BARIS INI! INI YANG KELUPAAN.
         "function allowance(address owner, address spender) view returns (uint256)"
     ],
-    // ... (ROUTER ABI tidak berubah)
+    // PASTIKAN BAGIAN ROUTER INI SUDAH LENGKAP
     ROUTER: [
-        "function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) external payable"
+        "function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) external payable",
+        // INI BARIS YANG MUNGKIN LUPA TERSIMPAN
+        "function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory amounts)"
     ]
 };
