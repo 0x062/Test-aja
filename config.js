@@ -32,6 +32,9 @@ export const CONTRACT_ABIS = {
     
     // Gunakan versi ringkas ini untuk Router
     ROUTER: [
+
+        "function multicall(bytes[] calldata data) external payable returns (bytes[] memory results)",
+        "function unwrapWETH9(uint256 amountMinimum, address recipient) external payable",
         // Fungsi utama untuk swap V3 (satu pool)
         {
             "inputs": [
