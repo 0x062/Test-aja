@@ -33,7 +33,7 @@ async function executeV3Swap(wallet, targetToken, fee) {
         fee: fee,
         recipient: wallet.address,
         amountIn: amountIn,
-        amountOutMinimum: 0, 
+        amountOutMinimum: 0,
         sqrtPriceLimitX96: 0,
     };
     try {
@@ -47,7 +47,7 @@ async function executeV3Swap(wallet, targetToken, fee) {
     }
 }
 
-// FUNGSI SWAP BACK (Dengan perbaikan)
+// FUNGSI SWAP BACK (Dengan perbaikan kedua)
 async function swapTokenBackToNative(wallet, provider, tokenToSell) {
     console.log('----------------------------------------------------');
     console.log(`🚀 Mempersiapkan SWAP BACK: ${tokenToSell.name} -> XOS...`);
@@ -57,18 +57,20 @@ async function swapTokenBackToNative(wallet, provider, tokenToSell) {
 
     // 1. Cek Saldo & Beri Approval jika perlu
     const balance = await tokenContract.balanceOf(wallet.address);
-    
-    // ================== PERBAIKAN DI SINI ==================
-    // Menggunakan `=== 0n` untuk ethers.js v6, bukan `.isZero()`
-    if (balance === 0n) { 
-    // =======================================================
+
+    // Perbaikan #1: Menggunakan `=== 0n` untuk ethers.js v6
+    if (balance === 0n) {
         console.log(`🤷 Saldo ${tokenToSell.name} adalah 0. Tidak ada yang bisa dijual.`);
         return;
     }
     console.log(`💰 Saldo terdeteksi: ${ethers.formatUnits(balance, tokenToSell.decimals || 18)} ${tokenToSell.name}. Menjual semua...`);
 
     const allowance = await tokenContract.allowance(wallet.address, CONTRACT_ADDRESSES.ROUTER);
-    if (allowance.lt(balance)) {
+    
+    // ================== PERBAIKAN DI SINI ==================
+    // Perbaikan #2: Menggunakan `<` untuk membandingkan BigInt di ethers.js v6
+    if (allowance < balance) {
+    // =======================================================
         console.log("🤔 Allowance tidak cukup. Memberikan approval...");
         const approveTx = await tokenContract.approve(CONTRACT_ADDRESSES.ROUTER, balance);
         console.log(`⏳ Menunggu konfirmasi approval... Hash: ${approveTx.hash}`);
@@ -91,14 +93,14 @@ async function swapTokenBackToNative(wallet, provider, tokenToSell) {
         tokenIn: tokenToSell.address,
         tokenOut: CONTRACT_ADDRESSES.WXOS,
         fee: fee,
-        recipient: routerContract.target, 
+        recipient: routerContract.target,
         amountIn: balance,
-        amountOutMinimum: 0, 
+        amountOutMinimum: 0,
         sqrtPriceLimitX96: 0,
     };
 
     const swapCallData = routerContract.interface.encodeFunctionData("exactInputSingle", [swapParams]);
-    const unwrapCallData = routerContract.interface.encodeFunctionData("unwrapWETH9", [0, wallet.address]); 
+    const unwrapCallData = routerContract.interface.encodeFunctionData("unwrapWETH9", [0, wallet.address]);
 
     try {
         console.log("✨ Menjalankan multicall (Swap + Unwrap)...");
