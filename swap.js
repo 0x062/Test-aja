@@ -33,7 +33,7 @@ async function executeV3Swap(wallet, targetToken, fee) {
         fee: fee,
         recipient: wallet.address,
         amountIn: amountIn,
-        amountOutMinimum: 0, // Sesuai script asli Anda, tanpa proteksi slippage
+        amountOutMinimum: 0, 
         sqrtPriceLimitX96: 0,
     };
     try {
@@ -47,9 +47,7 @@ async function executeV3Swap(wallet, targetToken, fee) {
     }
 }
 
-// =======================================================
-//                   FUNGSI BARU: SWAP BACK
-// =======================================================
+// FUNGSI SWAP BACK (Dengan perbaikan)
 async function swapTokenBackToNative(wallet, provider, tokenToSell) {
     console.log('----------------------------------------------------');
     console.log(`🚀 Mempersiapkan SWAP BACK: ${tokenToSell.name} -> XOS...`);
@@ -59,7 +57,11 @@ async function swapTokenBackToNative(wallet, provider, tokenToSell) {
 
     // 1. Cek Saldo & Beri Approval jika perlu
     const balance = await tokenContract.balanceOf(wallet.address);
-    if (balance.isZero()) {
+    
+    // ================== PERBAIKAN DI SINI ==================
+    // Menggunakan `=== 0n` untuk ethers.js v6, bukan `.isZero()`
+    if (balance === 0n) { 
+    // =======================================================
         console.log(`🤷 Saldo ${tokenToSell.name} adalah 0. Tidak ada yang bisa dijual.`);
         return;
     }
@@ -89,14 +91,14 @@ async function swapTokenBackToNative(wallet, provider, tokenToSell) {
         tokenIn: tokenToSell.address,
         tokenOut: CONTRACT_ADDRESSES.WXOS,
         fee: fee,
-        recipient: routerContract.target, // Kirim WXOS ke router untuk di-unwrap
+        recipient: routerContract.target, 
         amountIn: balance,
-        amountOutMinimum: 0, // Sesuai script asli Anda, tanpa proteksi slippage
+        amountOutMinimum: 0, 
         sqrtPriceLimitX96: 0,
     };
 
     const swapCallData = routerContract.interface.encodeFunctionData("exactInputSingle", [swapParams]);
-    const unwrapCallData = routerContract.interface.encodeFunctionData("unwrapWETH9", [0, wallet.address]); // amountOutMin 0, kirim XOS ke wallet kita
+    const unwrapCallData = routerContract.interface.encodeFunctionData("unwrapWETH9", [0, wallet.address]); 
 
     try {
         console.log("✨ Menjalankan multicall (Swap + Unwrap)...");
@@ -109,9 +111,7 @@ async function swapTokenBackToNative(wallet, provider, tokenToSell) {
     }
 }
 
-// =======================================================
-//                  MODIFIKASI FUNGSI main
-// =======================================================
+// FUNGSI main (Tidak berubah)
 async function main() {
     console.log('🚀 Memulai Bot Cerdas...');
     const provider = new ethers.JsonRpcProvider(process.env.XOS_TESTNET_RPC_URL);
@@ -138,7 +138,6 @@ async function main() {
     // --- FASE 2: PENJUALAN ---
     console.log("\n***** FASE PENJUALAN DIMULAI *****\n");
     for (const token of TARGET_TOKENS) {
-        // Panggil fungsi swap back yang baru
         await swapTokenBackToNative(wallet, provider, token);
         console.log("\n...Mengambil jeda 5 detik...\n");
         await sleep(5000);
